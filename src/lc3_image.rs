@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Result;
 use itertools::Itertools;
 
-pub fn read_program(path: &str) -> Result<(Vec<u16>, u16)> {
+pub fn read_image(path: &str) -> Result<(Vec<u16>, u16)> {
   let buf = fs::read(path)?;
   let mut inst_iter = buf.iter()
     .tuples()
