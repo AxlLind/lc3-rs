@@ -2,14 +2,13 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 use console::Term;
-pub use console::Key;
 
-type QueueMutex = Arc<Mutex<VecDeque<Key>>>;
+type QueueMutex = Arc<Mutex<VecDeque<char>>>;
 
 fn spawn_producer(m: QueueMutex) {
   let t = Term::stdout();
   thread::spawn(move || loop {
-    let c = t.read_key().unwrap();
+    let c = t.read_char().unwrap();
     m.lock().unwrap().push_back(c);
   });
 }
@@ -23,10 +22,17 @@ impl KeyEventQueue {
     Self { m }
   }
 
-  pub fn poll_key(&self) -> Option<Key> {
+  pub fn is_empty(&self) -> bool {
     match self.m.try_lock() {
-      Ok(mut q) => q.pop_front(),
-      Err(_)    => None,
+      Ok(q)  => q.is_empty(),
+      Err(_) => true,
+    }
+  }
+
+  pub fn read_blocking(&self) -> char {
+    loop {
+      let maybe = self.m.lock().unwrap().pop_front();
+      if let Some(c) = maybe { return c; }
     }
   }
 }

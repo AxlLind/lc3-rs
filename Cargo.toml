@@ -3,8 +3,18 @@ name = "LC3"
 version = "0.1.0"
 authors = ["Axel Lindeberg <axel.ew.lindeberg@gmail.com>"]
 edition = "2018"
+default-run = "main"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[lib]
+name = "lc3_image"
+path = "src/lc3_image.rs"
+
 [dependencies]
 console = "0.9.2"
+itertools = "0.9.0"
