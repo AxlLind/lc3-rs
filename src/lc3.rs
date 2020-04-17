@@ -22,7 +22,10 @@ fn sext(w: u16, b: u8) -> u16 {
   (x ^ m) - m
 }
 
-fn flush() { stdout().flush().unwrap(); }
+fn print_byte(v: u16) {
+  print!("{}", (v & 0x7f) as u8 as char);
+  stdout().flush().unwrap();
+}
 
 pub struct LC3 {
   pc: u16,
@@ -37,6 +40,8 @@ impl LC3 {
     let (start, end) = (pc as usize, pc as usize + code.len());
     let mut mem = [0;0x10000];
     mem[start..end].clone_from_slice(code);
+    mem[DSR as usize] = 1 << 15;
+    mem[MCR as usize] = 1 << 15;
     Self {
       pc,
       reg: [0;8],
@@ -58,11 +63,11 @@ impl LC3 {
         NOT => self.set_cc(r, !self.reg[r2]),
         LD  => self.set_cc(r, self.rmem(self.pc + sext(w,9))),
         LDR => self.set_cc(r, self.rmem(self.reg[r2] + sext(w,6))),
-        LDI => self.set_cc(r, self.rimem(self.pc + sext(w,9))),
+        LDI => self.set_cc(r, self.rmem(self.rmem(self.pc + sext(w,9)))),
         LEA => self.set_cc(r, self.pc + sext(w,9)),
-        ST  => self.mem[(self.pc + sext(w,9)) as usize] = self.reg[r],
-        STR => self.mem[(self.reg[r2] + sext(w,6)) as usize] = self.reg[r],
-        STI => self.mem[self.rimem(self.pc + sext(w,9)) as usize] = self.reg[r],
+        ST  => self.wmem(self.reg[r], self.pc + sext(w,9)),
+        STR => self.wmem(self.reg[r], self.reg[r2] + sext(w,6)),
+        STI => self.wmem(self.reg[r], self.rmem(self.pc + sext(w,9))),
         BR  => if w & self.regcc != 0 { self.pc += sext(w,9) },
         JMP => self.pc = self.reg[r2],
         JSR => self.jsr(w,r2),
@@ -84,12 +89,11 @@ impl LC3 {
   fn trap(&mut self, w: u16) {
     match w & 0xff {
       GETC => self.reg[0] = self.read_input(),
-      OUT  => print!("{}", (self.reg[0] & 0x7f) as u8 as char),
+      OUT  => print_byte(self.reg[0]),
       IN   => {
-        print!("> ");
-        flush();
+        print_byte(b'>' as u16);
         let b = self.read_input();
-        print!("{}", b as u8 as char);
+        print_byte(b);
         self.reg[0] = b;
       }
       PUTS => {
@@ -107,45 +111,44 @@ impl LC3 {
           .take_while(|&m| m != 0)
           .map(|m| m as u8 as char)
           .collect::<String>();
-        print!("PUTSP: {}", s);
+        print!("{}", s);
       }
       HALT => panic!("lc3 halted"),
       _ => panic!("illegal trap: {}", w & 0xff),
     }
-    flush();
+    stdout().flush().unwrap();
   }
 
   fn add_and_arg(&self, w: u16) -> u16 {
-    if w & 0x20 == 0 {
-      self.reg[w as usize & 0x7]
-    } else {
-      sext(w,5)
-    }
+    if w & 0x20 != 0 { return sext(w,5); }
+    self.reg[w as usize & 0x7]
   }
 
   fn read_input(&self) -> u16 {
     self.key_queue.read_blocking() as u8 as u16
   }
 
-  fn rimem(&self, adr: u16) -> u16 {
-    let adr = self.rmem(adr);
-    self.rmem(adr)
-  }
-
   fn rmem(&self, adr: u16) -> u16 {
     match adr {
       KBSR => (!self.key_queue.is_empty() as u16) << 15,
       KBDR => self.read_input(),
-      DSR  => 1 << 15,
-      DDR  => unimplemented!("DDR"),
-      MCR  => unimplemented!("MCR"),
       _    => self.mem[adr as usize],
     }
   }
 
-  fn set_cc(&mut self, dr: usize, val: u16) {
-    let sign = 10 - (val as i16).signum();
+  fn wmem(&mut self, v: u16, adr: u16) {
+    match adr {
+      DSR => return,
+      DDR => print_byte(v),
+      MCR => if v >> 15 == 0 { self.trap(HALT); },
+      _   => {},
+    }
+    self.mem[adr as usize] = v;
+  }
+
+  fn set_cc(&mut self, dr: usize, v: u16) {
+    let sign = 10 - (v as i16).signum();
     self.regcc = 1 << sign;
-    self.reg[dr] = val;
+    self.reg[dr] = v;
   }
 }
