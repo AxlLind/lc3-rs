@@ -1,5 +1,7 @@
-use std::io::{stdout, Write};
+use std::io::{Result, Write};
+use std::fmt::Display;
 use std::iter::once;
+use console::Term;
 use crate::key_event_queue::KeyEventQueue;
 
 // opcodes
@@ -22,17 +24,13 @@ fn sext(w: u16, b: u8) -> u16 {
   (x ^ m) - m
 }
 
-fn print_byte(v: u16) {
-  print!("{}", (v & 0x7f) as u8 as char);
-  stdout().flush().unwrap();
-}
-
 pub struct LC3 {
   pc: u16,
   reg: [u16;8],
   regcc: u16,
   key_queue: KeyEventQueue,
   mem: [u16;0x10000],
+  term: Term,
 }
 
 impl LC3 {
@@ -48,6 +46,7 @@ impl LC3 {
       regcc: 0,
       key_queue: KeyEventQueue::spawn(),
       mem,
+      term: Term::buffered_stdout(),
     }
   }
 
@@ -80,20 +79,20 @@ impl LC3 {
   fn jsr(&mut self, w: u16, r2: usize) {
     self.reg[7] = self.pc;
     if w & 0x800 == 0 {
-      self.pc = self.reg[r2]
+      self.pc = self.reg[r2];
     } else {
-      self.pc += sext(w,11)
+      self.pc += sext(w,11);
     }
   }
 
   fn trap(&mut self, w: u16) {
     match w & 0xff {
       GETC => self.reg[0] = self.read_input(),
-      OUT  => print_byte(self.reg[0]),
+      OUT  => self.write_byte(self.reg[0]),
       IN   => {
-        print_byte(b'>' as u16);
+        self.write_byte(b'>' as u16);
         let b = self.read_input();
-        print_byte(b);
+        self.write_byte(b);
         self.reg[0] = b;
       }
       PUTS => {
@@ -102,7 +101,7 @@ impl LC3 {
           .take_while(|&&m| m != 0)
           .map(|&m| m as u8 as char)
           .collect::<String>();
-        print!("{}", s);
+        self.write(s).unwrap();
       }
       PUTSP => {
         let adr = self.reg[0] as usize;
@@ -111,12 +110,11 @@ impl LC3 {
           .take_while(|&m| m != 0)
           .map(|m| m as u8 as char)
           .collect::<String>();
-        print!("{}", s);
+        self.write(s).unwrap();
       }
       HALT => panic!("lc3 halted"),
       _ => panic!("illegal trap: {}", w & 0xff),
     }
-    stdout().flush().unwrap();
   }
 
   fn add_and_arg(&self, w: u16) -> u16 {
@@ -139,16 +137,32 @@ impl LC3 {
   fn wmem(&mut self, v: u16, adr: u16) {
     match adr {
       DSR => return,
-      DDR => print_byte(v),
+      DDR => self.write_byte(v),
       MCR => if v >> 15 == 0 { self.trap(HALT); },
       _   => {},
     }
     self.mem[adr as usize] = v;
   }
 
-  fn set_cc(&mut self, dr: usize, v: u16) {
+  fn set_cc(&mut self, r: usize, v: u16) {
     let sign = 10 - (v as i16).signum();
     self.regcc = 1 << sign;
-    self.reg[dr] = v;
+    self.reg[r] = v;
+  }
+
+  fn write_byte(&mut self, v: u16) {
+    self.write((v & 0x7f) as u8 as char).unwrap();
+  }
+
+  fn write<D: Display>(&mut self, d: D) -> Result<()> {
+    // Ridiculous hack until this issue is fixed:
+    // https://github.com/mitsuhiko/console/issues/36
+    for c in format!("{}", d).chars() {
+      write!(self.term, "{}", c)?;
+      if c == '\n' {
+        self.term.clear_line()?;
+      }
+    }
+    self.term.flush()
   }
 }
