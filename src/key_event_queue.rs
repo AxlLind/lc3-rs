@@ -1,25 +1,30 @@
 use std::thread;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::collections::VecDeque;
 use console::Term;
 
 type QueueMutex = Arc<Mutex<VecDeque<char>>>;
 
-fn spawn_producer(m: QueueMutex) {
+fn spawn_listener(m: QueueMutex, c: Arc<Condvar>) {
   let t = Term::stdout();
   thread::spawn(move || loop {
-    let c = t.read_char().unwrap();
-    m.lock().unwrap().push_back(c);
+    let e = t.read_char().unwrap();
+    m.lock().unwrap().push_back(e);
+    c.notify_all();
   });
 }
 
-pub struct KeyEventQueue { m: QueueMutex }
+pub struct KeyEventQueue {
+  m: QueueMutex,
+  c: Arc<Condvar>,
+}
 
 impl KeyEventQueue {
   pub fn spawn() -> Self {
     let m = QueueMutex::default();
-    spawn_producer(m.clone());
-    Self { m }
+    let c = Arc::new(Condvar::new());
+    spawn_listener(m.clone(), c.clone());
+    Self { m, c }
   }
 
   pub fn is_empty(&self) -> bool {
@@ -27,9 +32,10 @@ impl KeyEventQueue {
   }
 
   pub fn pop_blocking(&self) -> char {
+    let mut q = self.m.lock().unwrap();
     loop {
-      let maybe = self.m.lock().unwrap().pop_front();
-      if let Some(c) = maybe { return c; }
+      if let Some(e) = q.pop_front() { return e; }
+      q = self.c.wait(q).unwrap();
     }
   }
 }
