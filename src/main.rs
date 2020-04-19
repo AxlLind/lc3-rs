@@ -1,7 +1,7 @@
 use std::io::Result;
 
 mod lc3;
-mod key_event_queue;
+mod key_queue;
 use lc3::LC3;
 use lc3_image::read_image;
 

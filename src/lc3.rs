@@ -2,7 +2,7 @@ use std::io::Write;
 use std::fmt::Display;
 use std::iter::once;
 use console::Term;
-use crate::key_event_queue::KeyEventQueue;
+use crate::key_queue::KeyQueue;
 
 // opcodes
 const ADD: u16 = 0b0001; const AND: u16 = 0b0101; const BR:  u16 = 0b0000;
@@ -30,7 +30,7 @@ pub struct LC3 {
   pc: u16,
   reg: [u16;8],
   regcc: u16,
-  key_queue: KeyEventQueue,
+  key_queue: KeyQueue,
   mem: [u16;0x10000],
   term: Term,
 }
@@ -46,7 +46,7 @@ impl LC3 {
       pc,
       reg: [0;8],
       regcc: 0,
-      key_queue: KeyEventQueue::spawn(),
+      key_queue: KeyQueue::spawn(),
       mem,
       term: Term::buffered_stdout(),
     }

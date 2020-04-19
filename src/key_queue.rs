@@ -14,12 +14,12 @@ fn spawn_listener(m: QueueMutex, c: Arc<Condvar>) {
   });
 }
 
-pub struct KeyEventQueue {
+pub struct KeyQueue {
   m: QueueMutex,
   c: Arc<Condvar>,
 }
 
-impl KeyEventQueue {
+impl KeyQueue {
   pub fn spawn() -> Self {
     let m = QueueMutex::default();
     let c = Arc::new(Condvar::new());
