@@ -31,8 +31,8 @@ pub struct LC3 {
   reg: [u16;8],
   regcc: u16,
   key_queue: KeyQueue,
-  mem: [u16;0x10000],
   term: Term,
+  mem: [u16;0x10000],
 }
 
 impl LC3 {
@@ -47,8 +47,8 @@ impl LC3 {
       reg: [0;8],
       regcc: 0,
       key_queue: KeyQueue::spawn(),
-      mem,
       term: Term::buffered_stdout(),
+      mem,
     }
   }
 
@@ -89,13 +89,13 @@ impl LC3 {
 
   fn trap(&mut self, w: u16) {
     match w & 0xff {
-      GETC => self.reg[0] = self.read_input(),
+      GETC => self.reg[0] = self.key_queue.pop_blocking() as u8 as u16,
       OUT  => self.write(to_char(self.reg[0])),
       IN   => {
         self.write("> ");
-        let b = self.read_input();
-        self.write(to_char(b));
-        self.reg[0] = b;
+        let c = self.key_queue.pop_blocking();
+        self.write(c);
+        self.reg[0] = c as u8 as u16;
       }
       PUTS => {
         let adr = self.reg[0] as usize;
@@ -127,7 +127,7 @@ impl LC3 {
   fn rmem(&self, adr: u16) -> u16 {
     match adr {
       KBSR => (!self.key_queue.is_empty() as u16) << 15,
-      KBDR => self.read_input(),
+      KBDR => self.key_queue.pop_blocking() as u8 as u16,
       _    => self.mem[adr as usize],
     }
   }
@@ -151,14 +151,13 @@ impl LC3 {
   fn write<T: Display>(&mut self, t: T) {
     // Ridiculous hack until this issue is fixed:
     // https://github.com/mitsuhiko/console/issues/36
-    for c in format!("{}", t).chars() {
-      write!(self.term, "{}", c).unwrap();
-      if c == '\n' { self.term.clear_line().unwrap(); }
+    let s = format!("{}", t);
+    let mut lines = s.split("\n");
+    write!(self.term, "{}", lines.next().unwrap()).unwrap();
+    for line in lines {
+      self.term.clear_line().unwrap();
+      writeln!(self.term, "{}", line).unwrap();
     }
     self.term.flush().unwrap();
-  }
-
-  fn read_input(&self) -> u16 {
-    self.key_queue.pop_blocking() as u8 as u16
   }
 }
