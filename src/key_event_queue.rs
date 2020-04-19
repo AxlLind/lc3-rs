@@ -23,13 +23,10 @@ impl KeyEventQueue {
   }
 
   pub fn is_empty(&self) -> bool {
-    match self.m.try_lock() {
-      Ok(q)  => q.is_empty(),
-      Err(_) => true,
-    }
+    self.m.lock().unwrap().is_empty()
   }
 
-  pub fn read_blocking(&self) -> char {
+  pub fn pop_blocking(&self) -> char {
     loop {
       let maybe = self.m.lock().unwrap().pop_front();
       if let Some(c) = maybe { return c; }

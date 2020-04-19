@@ -1,4 +1,4 @@
-use std::io::{Result, Write};
+use std::io::Write;
 use std::fmt::Display;
 use std::iter::once;
 use console::Term;
@@ -23,6 +23,8 @@ fn sext(w: u16, b: u8) -> u16 {
   let x = w & ((1 << b) - 1);
   (x ^ m) - m
 }
+
+fn to_char(v: u16) -> char { (v & 0x7f) as u8 as char }
 
 pub struct LC3 {
   pc: u16,
@@ -88,29 +90,29 @@ impl LC3 {
   fn trap(&mut self, w: u16) {
     match w & 0xff {
       GETC => self.reg[0] = self.read_input(),
-      OUT  => self.write_byte(self.reg[0]),
+      OUT  => self.write(to_char(self.reg[0])),
       IN   => {
-        self.write_byte(b'>' as u16);
+        self.write("> ");
         let b = self.read_input();
-        self.write_byte(b);
+        self.write(to_char(b));
         self.reg[0] = b;
       }
       PUTS => {
         let adr = self.reg[0] as usize;
         let s = self.mem[adr..].iter()
-          .take_while(|&&m| m != 0)
-          .map(|&m| m as u8 as char)
+          .map(|&m| to_char(m))
+          .take_while(|&m| m != '\0')
           .collect::<String>();
-        self.write(s).unwrap();
+        self.write(s);
       }
       PUTSP => {
         let adr = self.reg[0] as usize;
         let s = self.mem[adr..].iter()
-          .flat_map(|&m| once(m & 0x7f).chain(once((m >> 8) & 0x7f)))
-          .take_while(|&m| m != 0)
-          .map(|m| m as u8 as char)
+          .flat_map(|&m| once(m).chain(once(m >> 8)))
+          .map(|m| to_char(m))
+          .take_while(|&m| m != '\0')
           .collect::<String>();
-        self.write(s).unwrap();
+        self.write(s);
       }
       HALT => panic!("lc3 halted"),
       _ => panic!("illegal trap: {}", w & 0xff),
@@ -120,10 +122,6 @@ impl LC3 {
   fn add_and_arg(&self, w: u16) -> u16 {
     if w & 0x20 != 0 { return sext(w,5); }
     self.reg[w as usize & 0x7]
-  }
-
-  fn read_input(&self) -> u16 {
-    self.key_queue.read_blocking() as u8 as u16
   }
 
   fn rmem(&self, adr: u16) -> u16 {
@@ -137,8 +135,8 @@ impl LC3 {
   fn wmem(&mut self, v: u16, adr: u16) {
     match adr {
       DSR => return,
-      DDR => self.write_byte(v),
-      MCR => if v >> 15 == 0 { self.trap(HALT); },
+      DDR => self.write(to_char(v)),
+      MCR => if v >> 15 == 0 { self.trap(HALT) },
       _   => {},
     }
     self.mem[adr as usize] = v;
@@ -150,19 +148,17 @@ impl LC3 {
     self.reg[r] = v;
   }
 
-  fn write_byte(&mut self, v: u16) {
-    self.write((v & 0x7f) as u8 as char).unwrap();
-  }
-
-  fn write<D: Display>(&mut self, d: D) -> Result<()> {
+  fn write<T: Display>(&mut self, t: T) {
     // Ridiculous hack until this issue is fixed:
     // https://github.com/mitsuhiko/console/issues/36
-    for c in format!("{}", d).chars() {
-      write!(self.term, "{}", c)?;
-      if c == '\n' {
-        self.term.clear_line()?;
-      }
+    for c in format!("{}", t).chars() {
+      write!(self.term, "{}", c).unwrap();
+      if c == '\n' { self.term.clear_line().unwrap(); }
     }
-    self.term.flush()
+    self.term.flush().unwrap();
+  }
+
+  fn read_input(&self) -> u16 {
+    self.key_queue.pop_blocking() as u8 as u16
   }
 }
