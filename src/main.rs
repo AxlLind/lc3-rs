@@ -14,5 +14,4 @@ fn main() -> Result<()> {
   let (program, pc_start) = read_image(path)?;
   let mut lc3 = LC3::new(&program, pc_start);
   lc3.execute();
-  Ok(())
 }

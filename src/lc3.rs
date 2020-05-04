@@ -5,11 +5,11 @@ use console::Term;
 use crate::key_queue::KeyQueue;
 
 // opcodes
-const ADD: u16 = 0b0001; const AND: u16 = 0b0101; const BR:  u16 = 0b0000;
-const JMP: u16 = 0b1100; const JSR: u16 = 0b0100; const LD:  u16 = 0b0010;
-const LDI: u16 = 0b1010; const LDR: u16 = 0b0110; const LEA: u16 = 0b1110;
-const NOT: u16 = 0b1001; const ST:  u16 = 0b0011; const STI: u16 = 0b1011;
-const STR: u16 = 0b0111; const TRP: u16 = 0b1111;
+const BR:  u16 = 0x00; const ADD: u16 = 0x01; const LD:  u16 = 0x02;
+const ST:  u16 = 0x03; const JSR: u16 = 0x04; const AND: u16 = 0x05;
+const LDR: u16 = 0x06; const STR: u16 = 0x07; const NOT: u16 = 0x09;
+const LDI: u16 = 0x0a; const STI: u16 = 0x0b; const JMP: u16 = 0x0c;
+const LEA: u16 = 0x0e; const TRP: u16 = 0x0f;
 // trap codes
 const OUT: u16 = 0x21; const PUTS:  u16 = 0x22; const GETC: u16 = 0x20;
 const IN:  u16 = 0x23; const PUTSP: u16 = 0x24; const HALT: u16 = 0x25;
@@ -52,36 +52,36 @@ impl LC3 {
     }
   }
 
-  pub fn execute(&mut self) {
+  pub fn execute(&mut self) -> ! {
     loop {
       let w = self.mem[self.pc as usize];
-      let r  = (w as usize >> 9) & 0x7;
-      let r2 = (w as usize >> 6) & 0x7;
+      let a = (w as usize >> 9) & 0x7;
+      let b = (w as usize >> 6) & 0x7;
       self.pc += 1;
       match w >> 12 {
-        ADD => self.set_cc(r, self.reg[r2] + self.add_and_arg(w)),
-        AND => self.set_cc(r, self.reg[r2] & self.add_and_arg(w)),
-        NOT => self.set_cc(r, !self.reg[r2]),
-        LD  => self.set_cc(r, self.rmem(self.pc + sext(w,9))),
-        LDR => self.set_cc(r, self.rmem(self.reg[r2] + sext(w,6))),
-        LDI => self.set_cc(r, self.rmem(self.rmem(self.pc + sext(w,9)))),
-        LEA => self.set_cc(r, self.pc + sext(w,9)),
-        ST  => self.wmem(self.reg[r], self.pc + sext(w,9)),
-        STR => self.wmem(self.reg[r], self.reg[r2] + sext(w,6)),
-        STI => self.wmem(self.reg[r], self.rmem(self.pc + sext(w,9))),
+        NOT => self.cset(a, !self.reg[b]),
+        ADD => self.cset(a, self.reg[b] + self.add_and_arg(w)),
+        AND => self.cset(a, self.reg[b] & self.add_and_arg(w)),
+        LD  => self.cset(a, self.rmem(self.pc + sext(w,9))),
+        LDR => self.cset(a, self.rmem(self.reg[b] + sext(w,6))),
+        LDI => self.cset(a, self.rmem(self.rmem(self.pc + sext(w,9)))),
+        LEA => self.cset(a, self.pc + sext(w,9)),
+        ST  => self.wmem(a, self.pc + sext(w,9)),
+        STR => self.wmem(a, self.reg[b] + sext(w,6)),
+        STI => self.wmem(a, self.rmem(self.pc + sext(w,9))),
         BR  => if w & self.regcc != 0 { self.pc += sext(w,9) },
-        JMP => self.pc = self.reg[r2],
-        JSR => self.jsr(w,r2),
+        JMP => self.pc = self.reg[b],
+        JSR => self.jsr(w,b),
         TRP => self.trap(w),
-        _ => panic!("illegal opcode exception: {}", w >> 12),
+        _   => panic!("illegal opcode: {}", w >> 12),
       }
     }
   }
 
-  fn jsr(&mut self, w: u16, r2: usize) {
+  fn jsr(&mut self, w: u16, r: usize) {
     self.reg[7] = self.pc;
     if w & 0x800 == 0 {
-      self.pc = self.reg[r2];
+      self.pc = self.reg[r];
     } else {
       self.pc += sext(w,11);
     }
@@ -132,7 +132,8 @@ impl LC3 {
     }
   }
 
-  fn wmem(&mut self, v: u16, adr: u16) {
+  fn wmem(&mut self, r: usize, adr: u16) {
+    let v = self.reg[r];
     match adr {
       DSR => return,
       DDR => self.write(to_char(v)),
@@ -142,7 +143,7 @@ impl LC3 {
     self.mem[adr as usize] = v;
   }
 
-  fn set_cc(&mut self, r: usize, v: u16) {
+  fn cset(&mut self, r: usize, v: u16) {
     let sign = 10 - (v as i16).signum();
     self.regcc = 1 << sign;
     self.reg[r] = v;
