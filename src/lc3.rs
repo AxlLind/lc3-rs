@@ -89,8 +89,8 @@ impl LC3 {
 
   fn trap(&mut self, w: u16) {
     match w & 0xff {
-      GETC => self.reg[0] = self.key_queue.pop_blocking() as u8 as u16,
-      OUT  => self.write(to_char(self.reg[0])),
+      GETC => self.reg[0] = self.rmem(KBDR),
+      OUT  => self.wmem(0,DDR),
       IN   => {
         self.write("> ");
         let c = self.key_queue.pop_blocking();
